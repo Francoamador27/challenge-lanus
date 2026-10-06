@@ -38,7 +38,9 @@ pnpm dev
 
 ## Deploy
 
-Vercel, con Postgres de Neon conectado desde el Marketplace (región São Paulo). El build (`pnpm vercel-build`) aplica las migraciones antes de `next build`, y los datos de demo se cargan una sola vez con `pnpm db:seed` apuntando a la base de producción.
+Vercel, con Postgres de Neon conectado desde el Marketplace (región São Paulo). En producción, el build (`pnpm vercel-build`) aplica las migraciones antes de `next build`. Los previews no migran, así un PR sin mergear nunca toca la base de producción; si se activa el branching de Neon por preview, cada uno tiene su propia base y se puede migrar ahí también.
+
+A la URL de Neon conviene sumarle `connect_timeout=15`, porque la base escala a cero y la primera conexión tarda unos segundos. Los datos de demo se cargan una sola vez con `pnpm db:seed` apuntando a la base de producción.
 
 ## Decisiones técnicas
 
