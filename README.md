@@ -2,7 +2,7 @@
 
 Challenge técnico para Club Lanús. Es una billetera mobile-first para socios: login, inicio con tarjetas y últimos movimientos, y un listado de movimientos con búsqueda, filtros rápidos, scroll infinito y detalle. Está hecha con Next.js 16, TypeScript, PostgreSQL y Prisma, siguiendo [el diseño de Figma](https://www.figma.com/design/GXEt9rIWDil8nQN8ewOrVD/Challenge-t%C3%A9cnico).
 
-La demo está publicada en {{VERCEL_URL}}. Para entrar, usuario `soygranate@clublanus.com` y contraseña `GRANATE1@`.
+La demo se publica en Vercel y el link queda en la sección About del repositorio. Para entrar, usuario `soygranate@clublanus.com` y contraseña `GRANATE1@`.
 
 | Figma                                                                               | Implementación                                                                            |
 | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
@@ -35,6 +35,10 @@ pnpm dev
 | `pnpm build && pnpm test:e2e`                      | Playwright contra el build de producción           |
 | `pnpm typecheck`, `pnpm lint`, `pnpm format:check` | Chequeos de calidad                                |
 | `pnpm db:reset`                                    | Recrea la base y vuelve a cargar los datos de demo |
+
+## Deploy
+
+Vercel, con Postgres de Neon conectado desde el Marketplace (región São Paulo). El build (`pnpm vercel-build`) aplica las migraciones antes de `next build`, y los datos de demo se cargan una sola vez con `pnpm db:seed` apuntando a la base de producción.
 
 ## Decisiones técnicas
 
