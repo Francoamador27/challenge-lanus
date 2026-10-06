@@ -10,15 +10,28 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "next typegen && tsc --noEmit",
-    "test": "vitest run --project unit"
+    "test": "vitest run --project unit",
+    "postinstall": "prisma generate",
+    "db:up": "docker compose up -d --wait db",
+    "db:down": "docker compose down",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:studio": "prisma studio",
+    "test:db:up": "docker compose --profile test up -d --wait db-test",
+    "test:integration": "vitest run --project integration"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0",
     "clsx": "^2.1.1",
     "lucide-react": "^1.52.0",
     "next": "16.3.8",
+    "pg": "^8.23.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "tailwind-merge": "^3.7.0"
+    "server-only": "^0.0.1",
+    "tailwind-merge": "^3.7.0",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.3",
@@ -29,9 +42,11 @@
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.7",
     "@types/node": "^24.19.1",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6.1.2",
+    "dotenv": "^18.0.6",
     "eslint": "^9",
     "eslint-config-next": "16.3.8",
     "eslint-config-prettier": "^10.1.8",
@@ -39,7 +54,9 @@
     "lefthook": "^2.1.17",
     "prettier": "^3.9.9",
     "prettier-plugin-tailwindcss": "^0.8.1",
+    "prisma": "7.10.0",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^6.0.3",
     "vitest": "5.0.3"
   },

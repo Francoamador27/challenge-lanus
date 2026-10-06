@@ -1,0 +1,82 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum MovementType {
+  AUTO_DEBIT
+  RECEIVED
+  SENT
+}
+
+enum CardBrand {
+  MASTERCARD
+  VISA
+}
+
+model User {
+  id           String     @id @default(uuid()) @db.Uuid
+  email        String     @unique
+  passwordHash String     @map("password_hash")
+  displayName  String     @map("display_name")
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  sessions     Session[]
+  cards        Card[]
+  movements    Movement[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(uuid()) @db.Uuid
+  tokenHash String   @unique @map("token_hash")
+  userId    String   @map("user_id") @db.Uuid
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Card {
+  id           String     @id @default(uuid()) @db.Uuid
+  userId       String     @map("user_id") @db.Uuid
+  brand        CardBrand
+  last4        String     @db.Char(4)
+  holderName   String     @map("holder_name")
+  expMonth     Int        @map("exp_month") @db.SmallInt
+  expYear      Int        @map("exp_year") @db.SmallInt
+  balanceCents Int        @map("balance_cents")
+  currency     String     @default("USD") @db.Char(3)
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movements    Movement[]
+
+  @@index([userId])
+  @@map("cards")
+}
+
+model Movement {
+  id                 String       @id @default(uuid()) @db.Uuid
+  userId             String       @map("user_id") @db.Uuid
+  cardId             String?      @map("card_id") @db.Uuid
+  type               MovementType
+  counterparty       String
+  counterpartySearch String       @map("counterparty_search")
+  amountCents        Int          @map("amount_cents")
+  currency           String       @default("USD") @db.Char(3)
+  reference          String       @unique
+  occurredAt         DateTime     @map("occurred_at") @db.Timestamptz(3)
+  createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  user               User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  card               Card?        @relation(fields: [cardId], references: [id], onDelete: SetNull)
+
+  @@index([userId, occurredAt(sort: Desc), id(sort: Desc)])
+  @@index([userId, type, occurredAt(sort: Desc), id(sort: Desc)])
+  @@map("movements")
+}
