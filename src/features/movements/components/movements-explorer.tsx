@@ -2,15 +2,20 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { Inbox, SearchX } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { ApiError } from "@/lib/api-error";
 import { cn } from "@/lib/cn";
-import type { MovementPage, MovementType } from "@/shared/movements";
-import type { MovementsQuery } from "../api";
+import {
+  parseMovementsFilters,
+  toMovementsSearch,
+  type MovementPage,
+  type MovementsFilters,
+  type MovementType,
+} from "@/shared/movements";
 import { useDebouncedValue } from "../hooks/use-debounced-value";
 import { useMovementsQuery } from "../hooks/use-movements-query";
 import { InfiniteScrollSentinel } from "./infinite-scroll-sentinel";
@@ -21,21 +26,47 @@ import { TypeFilterChips } from "./type-filter-chips";
 
 export type MovementsExplorerProps = {
   userId: string;
-  initialFilters: MovementsQuery;
+  initialFilters: MovementsFilters;
   initialPage: MovementPage;
-  autoFocusSearch?: boolean;
 };
 
-/** Interactive movements list: debounced search, quick filters, infinite scroll and every loading, error and empty state. */
-export function MovementsExplorer({
-  userId,
-  initialFilters,
-  initialPage,
-  autoFocusSearch = false,
-}: MovementsExplorerProps) {
-  const [query, setQuery] = useState(initialFilters.q ?? "");
-  const [type, setType] = useState<MovementType | undefined>(initialFilters.type);
-  const q = useDebouncedValue(query.trim()) || undefined;
+/** Filters currently in the address bar, read at call time from inside event handlers and effects. */
+function currentUrlFilters(): MovementsFilters {
+  const params = new URLSearchParams(window.location.search);
+  return parseMovementsFilters((name) => params.get(name));
+}
+
+/**
+ * Writes the filters to the current history entry in canonical order, without a server round trip.
+ * Next keeps `useSearchParams` in sync with native history updates.
+ */
+function replaceFilters(filters: MovementsFilters): void {
+  const search = toMovementsSearch(filters);
+  window.history.replaceState(null, "", search ? `?${search}` : window.location.pathname);
+}
+
+/**
+ * Interactive movements list: debounced search, quick filters, infinite scroll and every loading,
+ * error and empty state. The URL is the source of truth for the search and filter, so back/forward
+ * navigation, links and shared URLs all restore them.
+ */
+export function MovementsExplorer({ userId, initialFilters, initialPage }: MovementsExplorerProps) {
+  const searchParams = useSearchParams();
+  const filters = parseMovementsFilters((name) => searchParams.get(name));
+  const urlQuery = filters.q ?? "";
+
+  const [query, setQuery] = useState(urlQuery);
+  const debouncedQuery = useDebouncedValue(query.trim());
+  const [syncedUrlQuery, setSyncedUrlQuery] = useState(urlQuery);
+  if (urlQuery !== syncedUrlQuery) {
+    // The URL changed under us (back/forward, a link): show its search unless it is our own write.
+    setSyncedUrlQuery(urlQuery);
+    if (urlQuery !== debouncedQuery) {
+      setQuery(urlQuery);
+    }
+  }
+
+  const [focusOnMount] = useState(() => searchParams.get("focus") === "search");
   const searchRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -52,25 +83,28 @@ export function MovementsExplorer({
     hasNextPage,
     fetchNextPage,
     refetch,
-  } = useMovementsQuery(
-    { q, type },
-    { userId, initial: { filters: initialFilters, page: initialPage } },
-  );
+  } = useMovementsQuery(filters, {
+    userId,
+    initial: { filters: initialFilters, page: initialPage },
+  });
 
-  // Mirror the filters in the URL without a server round trip, so the view can be shared and restored.
+  // Commit the debounced search to the URL, which drives the query.
   useEffect(() => {
-    const params = new URLSearchParams();
-    if (q) params.set("q", q);
-    if (type) params.set("type", type);
-    const search = params.toString();
-    window.history.replaceState(null, "", search ? `?${search}` : window.location.pathname);
-  }, [q, type]);
-
-  useEffect(() => {
-    if (autoFocusSearch) {
-      searchRef.current?.focus();
+    const current = currentUrlFilters();
+    if ((current.q ?? "") === debouncedQuery) {
+      return;
     }
-  }, [autoFocusSearch]);
+    replaceFilters({ ...current, q: debouncedQuery || undefined });
+  }, [debouncedQuery]);
+
+  useEffect(() => {
+    if (!focusOnMount) {
+      return;
+    }
+    searchRef.current?.focus();
+    // Drop the one-shot `focus` param so back navigation does not refocus the search.
+    replaceFilters(currentUrlFilters());
+  }, [focusOnMount]);
 
   useEffect(() => {
     if (error instanceof ApiError && error.status === 401) {
@@ -84,9 +118,13 @@ export function MovementsExplorer({
     void fetchNextPage();
   }, [fetchNextPage]);
 
+  const selectType = (type: MovementType | undefined) => {
+    replaceFilters({ ...currentUrlFilters(), type });
+  };
+
   const clearFilters = () => {
     setQuery("");
-    setType(undefined);
+    replaceFilters({});
   };
 
   const movements = data?.pages.flatMap((page) => page.data) ?? [];
@@ -110,10 +148,14 @@ export function MovementsExplorer({
     );
   } else if (movements.length === 0) {
     content =
-      q || type ? (
+      filters.q || filters.type ? (
         <EmptyState
           icon={<SearchX className="size-6" />}
-          title={q ? `No encontramos movimientos para “${q}”` : "No hay movimientos de este tipo"}
+          title={
+            filters.q
+              ? `No encontramos movimientos para “${filters.q}”`
+              : "No hay movimientos de este tipo"
+          }
           description="Probá con otro nombre o filtro."
           action={
             <Button variant="secondary" onClick={clearFilters}>
@@ -134,7 +176,7 @@ export function MovementsExplorer({
         aria-busy={isPlaceholderData || undefined}
         className={cn("flex flex-col gap-3 transition-opacity", isPlaceholderData && "opacity-60")}
       >
-        <MovementList movements={movements} />
+        <MovementList movements={movements} linkSearch={toMovementsSearch(filters)} />
         {isFetchingNextPage && <MovementListSkeleton rows={3} />}
         {isFetchNextPageError && (
           <div role="alert" className="flex flex-col items-center gap-1 py-2 text-center">
@@ -164,7 +206,7 @@ export function MovementsExplorer({
         busy={isFetching && !isFetchingNextPage}
         inputRef={searchRef}
       />
-      <TypeFilterChips value={type} onChange={setType} />
+      <TypeFilterChips value={filters.type} onChange={selectType} />
       <p aria-live="polite" className="sr-only">
         {announcement}
       </p>

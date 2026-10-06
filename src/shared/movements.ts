@@ -35,3 +35,29 @@ export const listMovementsQuerySchema = z.object({
 });
 
 export type ListMovementsQuery = z.infer<typeof listMovementsQuerySchema>;
+
+/** Search and type filters of the movements screen, as they appear in its URL. */
+export type MovementsFilters = { q?: string; type?: MovementType };
+
+/** Reads the movements filters from URL params, validating each field on its own. */
+export function parseMovementsFilters(
+  get: (name: "q" | "type") => string | null | undefined,
+): MovementsFilters {
+  const q = listMovementsQuerySchema.shape.q.safeParse(get("q") ?? undefined);
+  const type = listMovementsQuerySchema.shape.type.safeParse(get("type") ?? undefined);
+  return { q: q.success ? q.data : undefined, type: type.success ? type.data : undefined };
+}
+
+/** Serializes the filters that are set as a URL query string, without the leading `?`. */
+export function toMovementsSearch({ q, type }: MovementsFilters): string {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (type) params.set("type", type);
+  return params.toString();
+}
+
+/** URL of the movements screen showing the given filters. */
+export function buildMovementsHref(filters: MovementsFilters): string {
+  const search = toMovementsSearch(filters);
+  return search ? `/movimientos?${search}` : "/movimientos";
+}

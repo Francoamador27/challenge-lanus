@@ -5,11 +5,21 @@ import { MOVEMENT_TYPE_COPY } from "../labels";
 import { MovementAmount } from "./movement-amount";
 import { MovementIcon } from "./movement-icon";
 
+type MovementItemProps = {
+  movement: MovementDTO;
+  /** Query string of the list the row belongs to, so the detail can link back to it. */
+  linkSearch?: string;
+};
+
 /** Tappable movement row that opens its detail screen. */
-export function MovementItem({ movement }: { movement: MovementDTO }) {
+export function MovementItem({ movement, linkSearch }: MovementItemProps) {
   return (
     <Link
-      href={`/movimientos/${movement.id}`}
+      href={
+        linkSearch
+          ? `/movimientos/${movement.id}?from=${encodeURIComponent(linkSearch)}`
+          : `/movimientos/${movement.id}`
+      }
       className="relative flex items-center gap-4 rounded-card bg-surface p-4 shadow-card transition-colors hover:bg-granate-100/30"
     >
       <MovementIcon type={movement.type} />

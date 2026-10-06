@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { delay, http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
@@ -9,24 +9,65 @@ import { buildMovement } from "../../../../tests/fixtures/movements";
 import { server } from "../../../../tests/msw/server";
 import { MovementsExplorer } from "./movements-explorer";
 
-const router = vi.hoisted(() => ({ replace: vi.fn() }));
+const navigation = vi.hoisted(() => {
+  const listeners = new Set<() => void>();
+  return {
+    router: { replace: vi.fn() },
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    notify() {
+      listeners.forEach((listener) => listener());
+    },
+  };
+});
 
-vi.mock("next/navigation", () => ({ useRouter: () => router }));
+// Next keeps useSearchParams in sync with the URL, including native history updates; mirror that.
+vi.mock("next/navigation", async () => {
+  const { useSyncExternalStore } = await import("react");
+  return {
+    useRouter: () => navigation.router,
+    useSearchParams: () =>
+      new URLSearchParams(useSyncExternalStore(navigation.subscribe, () => window.location.search)),
+  };
+});
 
 const API = "http://localhost:3000/api/v1/movements";
 const adobe = buildMovement({ counterparty: "Adobe" });
 const ronaldo = buildMovement({ counterparty: "Ronaldo", type: "received" });
+const juan = buildMovement({ counterparty: "Juan Cabrero", type: "received" });
 const FIRST_PAGE: MovementPage = { data: [adobe, ronaldo], nextCursor: null };
+const HISTORY_METHODS = ["pushState", "replaceState"] as const;
+const originalHistory = {
+  pushState: window.history.pushState,
+  replaceState: window.history.replaceState,
+};
 
 let requests: URL[] = [];
 
-beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
+beforeAll(() => {
+  server.listen({ onUnhandledRequest: "error" });
+  for (const method of HISTORY_METHODS) {
+    window.history[method] = (...args: Parameters<History["pushState"]>) => {
+      originalHistory[method].apply(window.history, args);
+      navigation.notify();
+    };
+  }
+});
 beforeEach(() => {
   requests = [];
   window.history.replaceState(null, "", "/movimientos");
 });
 afterEach(() => server.resetHandlers());
-afterAll(() => server.close());
+afterAll(() => {
+  server.close();
+  for (const method of HISTORY_METHODS) {
+    window.history[method] = originalHistory[method];
+  }
+});
 
 function respondWith(
   resolver: (url: URL) => MovementPage | Response | Promise<MovementPage | Response>,
@@ -43,15 +84,14 @@ function respondWith(
 
 function renderExplorer(
   page: MovementPage = FIRST_PAGE,
-  props: { autoFocusSearch?: boolean; userId?: string } = {},
+  { userId = "user-a" }: { userId?: string } = {},
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
 ) {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
-  const { userId = "user-a", ...rest } = props;
   const view = render(
-    <MovementsExplorer userId={userId} initialFilters={{}} initialPage={page} {...rest} />,
+    <MovementsExplorer userId={userId} initialFilters={{}} initialPage={page} />,
     { wrapper },
   );
   return { ...view, client };
@@ -59,6 +99,7 @@ function renderExplorer(
 
 const rows = () =>
   screen.queryAllByRole("listitem").map((item) => within(item).getByRole("link").textContent);
+const searchbox = () => screen.getByRole("searchbox", { name: "Buscar movimientos" });
 
 describe("MovementsExplorer", () => {
   it("renders the server-provided first page without calling the API", async () => {
@@ -75,7 +116,7 @@ describe("MovementsExplorer", () => {
       nextCursor: null,
     }));
     renderExplorer();
-    await userEvent.type(screen.getByRole("searchbox", { name: "Buscar movimientos" }), "adobe");
+    await userEvent.type(searchbox(), "adobe");
     await waitFor(() => expect(rows()).toHaveLength(1));
     expect(requests.map((url) => url.searchParams.get("q"))).toEqual(["adobe"]);
     expect(window.location.search).toBe("?q=adobe");
@@ -97,16 +138,66 @@ describe("MovementsExplorer", () => {
     expect(window.location.search).toBe("?type=received");
   });
 
-  it("explains empty results and clears every filter", async () => {
+  it("explains empty results and clears every filter right away", async () => {
     respondWith((url) =>
       url.searchParams.size === 0 ? FIRST_PAGE : { data: [], nextCursor: null },
     );
     renderExplorer();
-    await userEvent.type(screen.getByRole("searchbox", { name: "Buscar movimientos" }), "zzz");
+    await userEvent.type(searchbox(), "zzz");
     expect(await screen.findByText("No encontramos movimientos para “zzz”")).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: "Limpiar filtros" }));
+    expect(window.location.search).toBe("");
     await waitFor(() => expect(rows()).toHaveLength(2));
-    expect(screen.getByRole("searchbox", { name: "Buscar movimientos" })).toHaveValue("");
+    expect(searchbox()).toHaveValue("");
+  });
+
+  it("keeps a canonical URL whatever the order of the user's actions", async () => {
+    respondWith(() => ({ data: [juan], nextCursor: null }));
+    renderExplorer();
+    await userEvent.type(searchbox(), "juan");
+    await userEvent.click(screen.getByRole("button", { name: "Recibido" }));
+    await waitFor(() => expect(window.location.search).toBe("?q=juan&type=received"));
+  });
+
+  it("seeds the search and filter from the URL rather than the server props", async () => {
+    window.history.replaceState(null, "", "/movimientos?q=juan&type=received");
+    respondWith((url) =>
+      url.searchParams.get("q") === "juan" && url.searchParams.get("type") === "received"
+        ? { data: [juan], nextCursor: null }
+        : FIRST_PAGE,
+    );
+    renderExplorer();
+    expect(searchbox()).toHaveValue("juan");
+    expect(screen.getByRole("button", { name: "Recibido" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await waitFor(() => expect(rows()).toEqual([expect.stringContaining("Juan Cabrero")]));
+  });
+
+  it("adopts URL changes it did not make, such as back navigation or the bottom nav", async () => {
+    window.history.replaceState(null, "", "/movimientos?q=juan");
+    respondWith((url) =>
+      url.searchParams.get("q") === "juan" ? { data: [juan], nextCursor: null } : FIRST_PAGE,
+    );
+    renderExplorer();
+    await waitFor(() => expect(rows()).toEqual([expect.stringContaining("Juan Cabrero")]));
+    act(() => window.history.pushState(null, "", "/movimientos"));
+    expect(searchbox()).toHaveValue("");
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    expect(window.location.search).toBe("");
+  });
+
+  it("links each row to its detail carrying the current filters", async () => {
+    window.history.replaceState(null, "", "/movimientos?q=adobe");
+    respondWith(() => ({ data: [adobe], nextCursor: null }));
+    renderExplorer();
+    await waitFor(() =>
+      expect(screen.getByRole("link", { name: /Adobe/ })).toHaveAttribute(
+        "href",
+        `/movimientos/${adobe.id}?from=q%3Dadobe`,
+      ),
+    );
   });
 
   it("shows a friendly message when the user has no movements at all", () => {
@@ -149,10 +240,9 @@ describe("MovementsExplorer", () => {
       return { data: [adobe], nextCursor: null };
     });
     renderExplorer();
-    const search = screen.getByRole("searchbox", { name: "Buscar movimientos" });
-    await userEvent.type(search, "ad");
+    await userEvent.type(searchbox(), "ad");
     await new Promise((resolve) => setTimeout(resolve, 350));
-    await userEvent.type(search, "obe");
+    await userEvent.type(searchbox(), "obe");
     await waitFor(() => expect(rows()).toEqual([expect.stringContaining("Adobe")]));
     await new Promise((resolve) => setTimeout(resolve, 700));
     expect(screen.queryByText("Stale result")).not.toBeInTheDocument();
@@ -162,7 +252,9 @@ describe("MovementsExplorer", () => {
     respondWith(() => HttpResponse.json({ title: "Unauthorized", status: 401 }, { status: 401 }));
     const { client } = renderExplorer();
     await userEvent.click(screen.getByRole("button", { name: "Enviado" }));
-    await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/login?next=/movimientos"));
+    await waitFor(() =>
+      expect(navigation.router.replace).toHaveBeenCalledWith("/login?next=/movimientos"),
+    );
     expect(client.getQueryCache().getAll()).toHaveLength(0);
   });
 
@@ -177,8 +269,10 @@ describe("MovementsExplorer", () => {
     expect(rows()).toEqual([expect.stringContaining("Solo de B")]);
   });
 
-  it("focuses the search when opened from the home magnifier", () => {
-    renderExplorer(FIRST_PAGE, { autoFocusSearch: true });
-    expect(screen.getByRole("searchbox", { name: "Buscar movimientos" })).toHaveFocus();
+  it("focuses the search when opened from the home magnifier and tidies the URL", () => {
+    window.history.replaceState(null, "", "/movimientos?focus=search");
+    renderExplorer();
+    expect(searchbox()).toHaveFocus();
+    expect(window.location.search).toBe("");
   });
 });

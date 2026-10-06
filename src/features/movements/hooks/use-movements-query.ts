@@ -1,12 +1,12 @@
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
-import type { MovementPage } from "@/shared/movements";
-import { fetchMovementsPage, type MovementsQuery } from "../api";
+import type { MovementPage, MovementsFilters } from "@/shared/movements";
+import { fetchMovementsPage } from "../api";
 
 const STALE_TIME_MS = 30_000;
 
 type MovementsQueryOptions = {
   userId: string;
-  initial?: { filters: MovementsQuery; page: MovementPage };
+  initial?: { filters: MovementsFilters; page: MovementPage };
 };
 
 /**
@@ -14,7 +14,7 @@ type MovementsQueryOptions = {
  * Reuses the server-rendered first page when the filters match.
  */
 export function useMovementsQuery(
-  filters: MovementsQuery,
+  filters: MovementsFilters,
   { userId, initial }: MovementsQueryOptions,
 ) {
   const matchesInitial =

@@ -3,7 +3,7 @@ import { MovementsExplorer } from "@/features/movements/components/movements-exp
 import { firstParam } from "@/lib/search-params";
 import { requireUser } from "@/server/auth/current-user";
 import { listMovements } from "@/server/movements/movements-service";
-import { DEFAULT_PAGE_SIZE, listMovementsQuerySchema } from "@/shared/movements";
+import { DEFAULT_PAGE_SIZE, parseMovementsFilters } from "@/shared/movements";
 
 export const metadata: Metadata = { title: "Movimientos" };
 
@@ -11,22 +11,13 @@ export const metadata: Metadata = { title: "Movimientos" };
 export default async function MovementsPage({ searchParams }: PageProps<"/movimientos">) {
   const user = await requireUser();
   const params = await searchParams;
-  const parsed = listMovementsQuerySchema.safeParse({
-    q: firstParam(params.q),
-    type: firstParam(params.type),
-  });
-  const filters = parsed.success ? { q: parsed.data.q, type: parsed.data.type } : {};
+  const filters = parseMovementsFilters((name) => firstParam(params[name]));
   const firstPage = await listMovements(user.id, { ...filters, limit: DEFAULT_PAGE_SIZE });
 
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-xl font-semibold text-ink">Movimientos</h1>
-      <MovementsExplorer
-        userId={user.id}
-        initialFilters={filters}
-        initialPage={firstPage}
-        autoFocusSearch={firstParam(params.focus) === "search"}
-      />
+      <MovementsExplorer userId={user.id} initialFilters={filters} initialPage={firstPage} />
     </div>
   );
 }

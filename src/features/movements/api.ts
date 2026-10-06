@@ -1,9 +1,7 @@
 import { ApiError } from "@/lib/api-error";
-import type { MovementPage, MovementType } from "@/shared/movements";
+import type { MovementPage, MovementsFilters } from "@/shared/movements";
 
-export type MovementsQuery = { q?: string; type?: MovementType };
-
-type FetchPageParams = MovementsQuery & {
+type FetchPageParams = MovementsFilters & {
   cursor?: string | null;
   limit?: number;
   signal?: AbortSignal;
