@@ -18,7 +18,12 @@ describe("getSafeRedirectPath", () => {
     ["/\\evil.com"],
     ["/login"],
     ["/login?next=/movimientos"],
-  ])("falls back to / for %s", (next) => {
+    // Browsers drop tabs and newlines while parsing URLs, turning these into "//evil.com".
+    ["/\t/evil.com"],
+    ["/\t\\evil.com"],
+    ["/\n/evil.com"],
+    ["/\r/evil.com"],
+  ])("falls back to / for %j", (next) => {
     expect(getSafeRedirectPath(next)).toBe("/");
   });
 });

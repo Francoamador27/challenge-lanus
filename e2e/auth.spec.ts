@@ -31,6 +31,17 @@ test("sends protected pages to login and back after signing in", async ({ page }
   );
 });
 
+test("never redirects off-site after login, even with control characters in next", async ({
+  page,
+  baseURL,
+}) => {
+  // %09 decodes to a tab, which browsers strip, turning "/<tab>/evil.example" into "//evil.example".
+  await page.goto("/login?next=%2F%09%2Fevil.example");
+  await login(page, { expectHome: false });
+  await expect(page).toHaveURL(`${baseURL}/`);
+  await expect(page.getByRole("heading", { level: 1, name: "Granate" })).toBeVisible();
+});
+
 test("logging out revokes the session server-side", async ({ page, context }) => {
   await page.goto("/login");
   await login(page);
