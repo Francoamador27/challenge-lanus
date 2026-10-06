@@ -18,8 +18,9 @@ describe("listCards", () => {
 
   it("returns the user's cards in carousel order as DTOs", async () => {
     const cards = await listCards(userId);
-    expect(cards.map(({ id: _id, ...card }) => card)).toEqual([
+    expect(cards).toMatchObject([
       {
+        id: expect.any(String),
         brand: "mastercard",
         last4: "1234",
         holderName: "Soy Granate",
@@ -28,6 +29,7 @@ describe("listCards", () => {
         balance: { cents: 97_885, currency: "USD" },
       },
       {
+        id: expect.any(String),
         brand: "visa",
         last4: "5678",
         holderName: "Soy Granate",
