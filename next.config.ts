@@ -9,6 +9,8 @@ const SECURITY_HEADERS = [
 
 const nextConfig: NextConfig = {
   agentRules: false,
+  // Docker ships a self-contained server; Vercel and `next start` use the default output.
+  output: process.env.BUILD_STANDALONE === "1" ? "standalone" : undefined,
   poweredByHeader: false,
   typedRoutes: true,
   async headers() {

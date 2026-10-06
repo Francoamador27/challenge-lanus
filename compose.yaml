@@ -34,5 +34,43 @@ services:
       - /var/lib/postgresql
     healthcheck: *postgres-healthcheck
 
+  migrate:
+    profiles: [app]
+    build:
+      context: .
+      target: migrator
+    environment:
+      DATABASE_URL: postgresql://granabank:granabank@db:5432/granabank
+      SEED_USER_EMAIL: ${SEED_USER_EMAIL:-soygranate@clublanus.com}
+      SEED_USER_PASSWORD: ${SEED_USER_PASSWORD:-GRANATE1@}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    profiles: [app]
+    build:
+      context: .
+      target: runner
+    environment:
+      DATABASE_URL: postgresql://granabank:granabank@db:5432/granabank
+    ports:
+      - "3000:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
 volumes:
   db-data:
