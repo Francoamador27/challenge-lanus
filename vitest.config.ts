@@ -20,6 +20,15 @@ export default defineConfig({
       {
         extends: true,
         test: {
+          name: "components",
+          environment: "jsdom",
+          include: ["src/**/*.test.tsx"],
+          setupFiles: ["./tests/setup/components.ts"],
+        },
+      },
+      {
+        extends: true,
+        test: {
           name: "integration",
           environment: "node",
           include: ["tests/integration/**/*.test.ts"],
