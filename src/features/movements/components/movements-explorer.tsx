@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { Inbox, SearchX } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
@@ -19,6 +20,7 @@ import { SearchField } from "./search-field";
 import { TypeFilterChips } from "./type-filter-chips";
 
 export type MovementsExplorerProps = {
+  userId: string;
   initialFilters: MovementsQuery;
   initialPage: MovementPage;
   autoFocusSearch?: boolean;
@@ -26,6 +28,7 @@ export type MovementsExplorerProps = {
 
 /** Interactive movements list: debounced search, quick filters, infinite scroll and every loading, error and empty state. */
 export function MovementsExplorer({
+  userId,
   initialFilters,
   initialPage,
   autoFocusSearch = false,
@@ -35,6 +38,7 @@ export function MovementsExplorer({
   const q = useDebouncedValue(query.trim()) || undefined;
   const searchRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   const {
     data,
@@ -48,7 +52,10 @@ export function MovementsExplorer({
     hasNextPage,
     fetchNextPage,
     refetch,
-  } = useMovementsQuery({ q, type }, { filters: initialFilters, page: initialPage });
+  } = useMovementsQuery(
+    { q, type },
+    { userId, initial: { filters: initialFilters, page: initialPage } },
+  );
 
   // Mirror the filters in the URL without a server round trip, so the view can be shared and restored.
   useEffect(() => {
@@ -67,9 +74,11 @@ export function MovementsExplorer({
 
   useEffect(() => {
     if (error instanceof ApiError && error.status === 401) {
+      // The session is gone: drop its cached data before anyone else signs in on this tab.
+      queryClient.clear();
       router.replace("/login?next=/movimientos");
     }
-  }, [error, router]);
+  }, [error, queryClient, router]);
 
   const loadMore = useCallback(() => {
     void fetchNextPage();

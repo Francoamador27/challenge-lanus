@@ -4,17 +4,25 @@ import { fetchMovementsPage, type MovementsQuery } from "../api";
 
 const STALE_TIME_MS = 30_000;
 
-/** Infinite query over the movements API; reuses the server-rendered first page when the filters match. */
+type MovementsQueryOptions = {
+  userId: string;
+  initial?: { filters: MovementsQuery; page: MovementPage };
+};
+
+/**
+ * Infinite query over the movements API, cached per user so one account never sees another's data.
+ * Reuses the server-rendered first page when the filters match.
+ */
 export function useMovementsQuery(
   filters: MovementsQuery,
-  initial?: { filters: MovementsQuery; page: MovementPage },
+  { userId, initial }: MovementsQueryOptions,
 ) {
   const matchesInitial =
     initial !== undefined &&
     initial.filters.q === filters.q &&
     initial.filters.type === filters.type;
   return useInfiniteQuery({
-    queryKey: ["movements", { q: filters.q ?? "", type: filters.type ?? "all" }],
+    queryKey: ["movements", userId, { q: filters.q ?? "", type: filters.type ?? "all" }],
     queryFn: ({ pageParam, signal }) =>
       fetchMovementsPage({ ...filters, cursor: pageParam, signal }),
     initialPageParam: null as string | null,

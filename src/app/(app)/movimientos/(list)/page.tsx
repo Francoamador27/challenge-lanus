@@ -22,6 +22,7 @@ export default async function MovementsPage({ searchParams }: PageProps<"/movimi
     <div className="flex flex-col gap-6">
       <h1 className="text-xl font-semibold text-ink">Movimientos</h1>
       <MovementsExplorer
+        userId={user.id}
         initialFilters={filters}
         initialPage={firstPage}
         autoFocusSearch={firstParam(params.focus) === "search"}

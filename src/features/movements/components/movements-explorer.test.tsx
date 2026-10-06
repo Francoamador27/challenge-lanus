@@ -43,15 +43,18 @@ function respondWith(
 
 function renderExplorer(
   page: MovementPage = FIRST_PAGE,
-  props: { autoFocusSearch?: boolean } = {},
+  props: { autoFocusSearch?: boolean; userId?: string } = {},
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
 ) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
-  return render(<MovementsExplorer initialFilters={{}} initialPage={page} {...props} />, {
-    wrapper,
-  });
+  const { userId = "user-a", ...rest } = props;
+  const view = render(
+    <MovementsExplorer userId={userId} initialFilters={{}} initialPage={page} {...rest} />,
+    { wrapper },
+  );
+  return { ...view, client };
 }
 
 const rows = () =>
@@ -155,11 +158,23 @@ describe("MovementsExplorer", () => {
     expect(screen.queryByText("Stale result")).not.toBeInTheDocument();
   });
 
-  it("sends the user to login when the session expired", async () => {
+  it("sends the user to login when the session expired and forgets cached data", async () => {
     respondWith(() => HttpResponse.json({ title: "Unauthorized", status: 401 }, { status: 401 }));
-    renderExplorer();
+    const { client } = renderExplorer();
     await userEvent.click(screen.getByRole("button", { name: "Enviado" }));
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/login?next=/movimientos"));
+    expect(client.getQueryCache().getAll()).toHaveLength(0);
+  });
+
+  it("never shows a previous user's cached movements", () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderExplorer(FIRST_PAGE, { userId: "user-a" }, client).unmount();
+    renderExplorer(
+      { data: [buildMovement({ counterparty: "Solo de B" })], nextCursor: null },
+      { userId: "user-b" },
+      client,
+    );
+    expect(rows()).toEqual([expect.stringContaining("Solo de B")]);
   });
 
   it("focuses the search when opened from the home magnifier", () => {

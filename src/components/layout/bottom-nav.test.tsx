@@ -1,4 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render as baseRender, screen } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { BottomNav } from "./bottom-nav";
 
@@ -6,6 +8,9 @@ const pathname = vi.hoisted(() => ({ current: "/" }));
 
 vi.mock("next/navigation", () => ({ usePathname: () => pathname.current }));
 vi.mock("@/features/auth/actions", () => ({ logout: vi.fn() }));
+
+const render = (ui: ReactElement) =>
+  baseRender(<QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>);
 
 describe("BottomNav", () => {
   it("marks the home link as current on /", () => {
